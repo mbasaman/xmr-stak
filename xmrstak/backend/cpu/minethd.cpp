@@ -119,18 +119,85 @@ minethd::minethd(miner_work& pWork, size_t iNo, int iMultiway, bool no_prefetch,
 
 	switch (iMultiway)
 	{
-	case 10:
-		oWorkThd = std::thread(&minethd::deca_work_main, this);
-		break;
-	case 5:
-		oWorkThd = std::thread(&minethd::penta_work_main, this);
+	case 3:
+		oWorkThd = std::thread(&minethd::original_3_work_main, this);
 		break;
 	case 4:
-		oWorkThd = std::thread(&minethd::quad_work_main, this);
+		oWorkThd = std::thread(&minethd::original_4_work_main, this);
 		break;
-	case 3:
-		oWorkThd = std::thread(&minethd::triple_work_main, this);
+	case 5:
+		oWorkThd = std::thread(&minethd::original_5_work_main, this);
 		break;
+	case 6:
+		oWorkThd = std::thread(&minethd::original_6_work_main, this);
+		break;
+	case 7:
+		oWorkThd = std::thread(&minethd::original_7_work_main, this);
+		break;
+	case 8:
+		oWorkThd = std::thread(&minethd::original_8_work_main, this);
+		break;
+	case 9:
+		oWorkThd = std::thread(&minethd::original_9_work_main, this);
+		break;
+	case 10:
+		oWorkThd = std::thread(&minethd::original_10_work_main, this);
+		break;
+	case 11:
+		oWorkThd = std::thread(&minethd::original_11_work_main, this);
+		break;
+	case 12:
+		oWorkThd = std::thread(&minethd::original_12_work_main, this);
+		break;
+	case 13:
+		oWorkThd = std::thread(&minethd::original_13_work_main, this);
+		break;
+	case 14:
+		oWorkThd = std::thread(&minethd::original_14_work_main, this);
+		break;
+	case 15:
+		oWorkThd = std::thread(&minethd::original_15_work_main, this);
+		break;
+	case 103:
+		oWorkThd = std::thread(&minethd::update_3_work_main, this);
+		break;
+	case 104:
+		oWorkThd = std::thread(&minethd::update_4_work_main, this);
+		break;
+	case 105:
+		oWorkThd = std::thread(&minethd::update_5_work_main, this);
+		break;
+	case 106:
+		oWorkThd = std::thread(&minethd::update_6_work_main, this);
+		break;
+	case 107:
+		oWorkThd = std::thread(&minethd::update_7_work_main, this);
+		break;
+	case 108:
+		oWorkThd = std::thread(&minethd::update_8_work_main, this);
+		break;
+	case 109:
+		oWorkThd = std::thread(&minethd::update_9_work_main, this);
+		break;
+	case 110:
+		oWorkThd = std::thread(&minethd::update_10_work_main, this);
+		break;
+	case 111:
+		oWorkThd = std::thread(&minethd::update_11_work_main, this);
+		break;
+	case 112:
+		oWorkThd = std::thread(&minethd::update_12_work_main, this);
+		break;
+	case 113:
+		oWorkThd = std::thread(&minethd::update_13_work_main, this);
+		break;
+	case 114:
+		oWorkThd = std::thread(&minethd::update_14_work_main, this);
+		break;
+	case 115:
+		oWorkThd = std::thread(&minethd::update_15_work_main, this);
+		break;
+
 	case 2:
 		oWorkThd = std::thread(&minethd::double_work_main, this);
 		break;
@@ -184,7 +251,7 @@ cryptonight_ctx* minethd::minethd_alloc_ctx()
 	return nullptr; //Should never happen
 }
 
-static constexpr size_t MAX_N = 10;
+static constexpr size_t MAX_N = 15;
 bool minethd::self_test()
 {
 	alloc_msg msg = { 0 };
@@ -300,6 +367,7 @@ bool minethd::self_test()
 	}
 	else if(::jconf::inst()->GetCurrentCoinSelection().GetDescription(1).GetMiningAlgo() == cryptonight_monero)
 	{
+/*
 		unsigned char out[32 * MAX_N];
 		cn_hash_fun hashf;
 		cn_hash_fun_multi hashf_multi;
@@ -475,6 +543,7 @@ bool minethd::self_test()
 				"\x94\xf5\xde\xc5\x24\xfa\xd6\xd3\x20\x04\xc5\x5c\x03\x5e\x5e\xa2\x23\xe7\x31\x5b\xe2\x0e\x2d\xc5\xb8\xa0\xac\x74\x64\xff\xeb\x1f"
 				"\x94\xf5\xde\xc5\x24\xfa\xd6\xd3\x20\x04\xc5\x5c\x03\x5e\x5e\xa2\x23\xe7\x31\x5b\xe2\x0e\x2d\xc5\xb8\xa0\xac\x74\x64\xff\xeb\x1f"
 				, 320) == 0;
+*/
 	}
 	else if(::jconf::inst()->GetCurrentCoinSelection().GetDescription(1).GetMiningAlgo() == cryptonight_aeon)
 	{
@@ -722,8 +791,9 @@ minethd::cn_hash_fun_multi minethd::func_multi_selector(size_t N, bool bHaveAes,
 	// function as a two digit binary
 
 	size_t NN(N);
-	if(NN == 10) {
-		NN = 6;
+	if(NN > 100) {
+		NN -= 100;
+		NN += 13;
 	}
 
 	uint8_t algv;
@@ -756,152 +826,762 @@ minethd::cn_hash_fun_multi minethd::func_multi_selector(size_t N, bool bHaveAes,
 	}
 
 	static const cn_hash_fun_multi func_table[] = {
-		cryptonight_double_hash<cryptonight_monero, false, false>,
-		cryptonight_double_hash<cryptonight_monero, true, false>,
-		cryptonight_double_hash<cryptonight_monero, false, true>,
-		cryptonight_double_hash<cryptonight_monero, true, true>,
-		cryptonight_triple_hash<cryptonight_monero, false, false>,
-		cryptonight_triple_hash<cryptonight_monero, true, false>,
-		cryptonight_triple_hash<cryptonight_monero, false, true>,
-		cryptonight_triple_hash<cryptonight_monero, true, true>,
-		cryptonight_quad_hash<cryptonight_monero, false, false>,
-		cryptonight_quad_hash<cryptonight_monero, true, false>,
-		cryptonight_quad_hash<cryptonight_monero, false, true>,
-		cryptonight_quad_hash<cryptonight_monero, true, true>,
-		cryptonight_penta_hash<cryptonight_monero, false, false>,
-		cryptonight_penta_hash<cryptonight_monero, true, false>,
-		cryptonight_penta_hash<cryptonight_monero, false, true>,
-		cryptonight_penta_hash<cryptonight_monero, true, true>,
-		cryptonight_deca_hash<cryptonight_monero, false, false>,
-		cryptonight_deca_hash<cryptonight_monero, true, false>,
-		cryptonight_deca_hash<cryptonight_monero, false, true>,
-		cryptonight_deca_hash<cryptonight_monero, true, true>,
-
-		cryptonight_double_hash<cryptonight_lite, false, false>,
-		cryptonight_double_hash<cryptonight_lite, true, false>,
-		cryptonight_double_hash<cryptonight_lite, false, true>,
-		cryptonight_double_hash<cryptonight_lite, true, true>,
-		cryptonight_triple_hash<cryptonight_lite, false, false>,
-		cryptonight_triple_hash<cryptonight_lite, true, false>,
-		cryptonight_triple_hash<cryptonight_lite, false, true>,
-		cryptonight_triple_hash<cryptonight_lite, true, true>,
-		cryptonight_quad_hash<cryptonight_lite, false, false>,
-		cryptonight_quad_hash<cryptonight_lite, true, false>,
-		cryptonight_quad_hash<cryptonight_lite, false, true>,
-		cryptonight_quad_hash<cryptonight_lite, true, true>,
-		cryptonight_penta_hash<cryptonight_lite, false, false>,
-		cryptonight_penta_hash<cryptonight_lite, true, false>,
-		cryptonight_penta_hash<cryptonight_lite, false, true>,
-		cryptonight_penta_hash<cryptonight_lite, true, true>,
-		cryptonight_deca_hash<cryptonight_lite, false, false>,
-		cryptonight_deca_hash<cryptonight_lite, true, false>,
-		cryptonight_deca_hash<cryptonight_lite, false, true>,
-		cryptonight_deca_hash<cryptonight_lite, true, true>,
-
-		cryptonight_double_hash<cryptonight, false, false>,
-		cryptonight_double_hash<cryptonight, true, false>,
-		cryptonight_double_hash<cryptonight, false, true>,
-		cryptonight_double_hash<cryptonight, true, true>,
-		cryptonight_triple_hash<cryptonight, false, false>,
-		cryptonight_triple_hash<cryptonight, true, false>,
-		cryptonight_triple_hash<cryptonight, false, true>,
-		cryptonight_triple_hash<cryptonight, true, true>,
-		cryptonight_quad_hash<cryptonight, false, false>,
-		cryptonight_quad_hash<cryptonight, true, false>,
-		cryptonight_quad_hash<cryptonight, false, true>,
-		cryptonight_quad_hash<cryptonight, true, true>,
-		cryptonight_penta_hash<cryptonight, false, false>,
-		cryptonight_penta_hash<cryptonight, true, false>,
-		cryptonight_penta_hash<cryptonight, false, true>,
-		cryptonight_penta_hash<cryptonight, true, true>,
-		cryptonight_deca_hash<cryptonight, false, false>,
-		cryptonight_deca_hash<cryptonight, true, false>,
-		cryptonight_deca_hash<cryptonight, false, true>,
-		cryptonight_deca_hash<cryptonight, true, true>,
-
-		cryptonight_double_hash<cryptonight_heavy, false, false>,
-		cryptonight_double_hash<cryptonight_heavy, true, false>,
-		cryptonight_double_hash<cryptonight_heavy, false, true>,
-		cryptonight_double_hash<cryptonight_heavy, true, true>,
-		cryptonight_triple_hash<cryptonight_heavy, false, false>,
-		cryptonight_triple_hash<cryptonight_heavy, true, false>,
-		cryptonight_triple_hash<cryptonight_heavy, false, true>,
-		cryptonight_triple_hash<cryptonight_heavy, true, true>,
-		cryptonight_quad_hash<cryptonight_heavy, false, false>,
-		cryptonight_quad_hash<cryptonight_heavy, true, false>,
-		cryptonight_quad_hash<cryptonight_heavy, false, true>,
-		cryptonight_quad_hash<cryptonight_heavy, true, true>,
-		cryptonight_penta_hash<cryptonight_heavy, false, false>,
-		cryptonight_penta_hash<cryptonight_heavy, true, false>,
-		cryptonight_penta_hash<cryptonight_heavy, false, true>,
-		cryptonight_penta_hash<cryptonight_heavy, true, true>,
-		cryptonight_deca_hash<cryptonight_heavy, false, false>,
-		cryptonight_deca_hash<cryptonight_heavy, true, false>,
-		cryptonight_deca_hash<cryptonight_heavy, false, true>,
-		cryptonight_deca_hash<cryptonight_heavy, true, true>,
-
-		cryptonight_double_hash<cryptonight_aeon, false, false>,
-		cryptonight_double_hash<cryptonight_aeon, true, false>,
-		cryptonight_double_hash<cryptonight_aeon, false, true>,
-		cryptonight_double_hash<cryptonight_aeon, true, true>,
-		cryptonight_triple_hash<cryptonight_aeon, false, false>,
-		cryptonight_triple_hash<cryptonight_aeon, true, false>,
-		cryptonight_triple_hash<cryptonight_aeon, false, true>,
-		cryptonight_triple_hash<cryptonight_aeon, true, true>,
-		cryptonight_quad_hash<cryptonight_aeon, false, false>,
-		cryptonight_quad_hash<cryptonight_aeon, true, false>,
-		cryptonight_quad_hash<cryptonight_aeon, false, true>,
-		cryptonight_quad_hash<cryptonight_aeon, true, true>,
-		cryptonight_penta_hash<cryptonight_aeon, false, false>,
-		cryptonight_penta_hash<cryptonight_aeon, true, false>,
-		cryptonight_penta_hash<cryptonight_aeon, false, true>,
-		cryptonight_penta_hash<cryptonight_aeon, true, true>,
-		cryptonight_deca_hash<cryptonight_aeon, false, false>,
-		cryptonight_deca_hash<cryptonight_aeon, true, false>,
-		cryptonight_deca_hash<cryptonight_aeon, false, true>,
-		cryptonight_deca_hash<cryptonight_aeon, true, true>,
-		
-		cryptonight_double_hash<cryptonight_ipbc, false, false>,
-		cryptonight_double_hash<cryptonight_ipbc, true, false>,
-		cryptonight_double_hash<cryptonight_ipbc, false, true>,
-		cryptonight_double_hash<cryptonight_ipbc, true, true>,
-		cryptonight_triple_hash<cryptonight_ipbc, false, false>,
-		cryptonight_triple_hash<cryptonight_ipbc, true, false>,
-		cryptonight_triple_hash<cryptonight_ipbc, false, true>,
-		cryptonight_triple_hash<cryptonight_ipbc, true, true>,
-		cryptonight_quad_hash<cryptonight_ipbc, false, false>,
-		cryptonight_quad_hash<cryptonight_ipbc, true, false>,
-		cryptonight_quad_hash<cryptonight_ipbc, false, true>,
-		cryptonight_quad_hash<cryptonight_ipbc, true, true>,
-		cryptonight_penta_hash<cryptonight_ipbc, false, false>,
-		cryptonight_penta_hash<cryptonight_ipbc, true, false>,
-		cryptonight_penta_hash<cryptonight_ipbc, false, true>,
-		cryptonight_penta_hash<cryptonight_ipbc, true, true>,
-		cryptonight_deca_hash<cryptonight_ipbc, false, false>,
-		cryptonight_deca_hash<cryptonight_ipbc, true, false>,
-		cryptonight_deca_hash<cryptonight_ipbc, false, true>,
-		cryptonight_deca_hash<cryptonight_ipbc, true, true>,
-
-		cryptonight_double_hash<cryptonight_stellite, false, false>,
-		cryptonight_double_hash<cryptonight_stellite, true, false>,
-		cryptonight_double_hash<cryptonight_stellite, false, true>,
-		cryptonight_double_hash<cryptonight_stellite, true, true>,
-		cryptonight_triple_hash<cryptonight_stellite, false, false>,
-		cryptonight_triple_hash<cryptonight_stellite, true, false>,
-		cryptonight_triple_hash<cryptonight_stellite, false, true>,
-		cryptonight_triple_hash<cryptonight_stellite, true, true>,
-		cryptonight_quad_hash<cryptonight_stellite, false, false>,
-		cryptonight_quad_hash<cryptonight_stellite, true, false>,
-		cryptonight_quad_hash<cryptonight_stellite, false, true>,
-		cryptonight_quad_hash<cryptonight_stellite, true, true>,
-		cryptonight_penta_hash<cryptonight_stellite, false, false>,
-		cryptonight_penta_hash<cryptonight_stellite, true, false>,
-		cryptonight_penta_hash<cryptonight_stellite, false, true>,
-		cryptonight_penta_hash<cryptonight_stellite, true, true>,
-		cryptonight_deca_hash<cryptonight_stellite, false, false>,
-		cryptonight_deca_hash<cryptonight_stellite, true, false>,
-		cryptonight_deca_hash<cryptonight_stellite, false, true>,
-		cryptonight_deca_hash<cryptonight_stellite, true, true>
+			cryptonight_double_hash<cryptonight_monero, false, false>,
+			cryptonight_double_hash<cryptonight_monero, true, false>,
+			cryptonight_double_hash<cryptonight_monero, false, true>,
+			cryptonight_double_hash<cryptonight_monero, true, true>,
+			cryptonight_original_3_hash<cryptonight_monero, false, false>,
+			cryptonight_original_3_hash<cryptonight_monero, true, false>,
+			cryptonight_original_3_hash<cryptonight_monero, false, true>,
+			cryptonight_original_3_hash<cryptonight_monero, true, true>,
+			cryptonight_original_4_hash<cryptonight_monero, false, false>,
+			cryptonight_original_4_hash<cryptonight_monero, true, false>,
+			cryptonight_original_4_hash<cryptonight_monero, false, true>,
+			cryptonight_original_4_hash<cryptonight_monero, true, true>,
+			cryptonight_original_5_hash<cryptonight_monero, false, false>,
+			cryptonight_original_5_hash<cryptonight_monero, true, false>,
+			cryptonight_original_5_hash<cryptonight_monero, false, true>,
+			cryptonight_original_5_hash<cryptonight_monero, true, true>,
+			cryptonight_original_6_hash<cryptonight_monero, false, false>,
+			cryptonight_original_6_hash<cryptonight_monero, true, false>,
+			cryptonight_original_6_hash<cryptonight_monero, false, true>,
+			cryptonight_original_6_hash<cryptonight_monero, true, true>,
+			cryptonight_original_7_hash<cryptonight_monero, false, false>,
+			cryptonight_original_7_hash<cryptonight_monero, true, false>,
+			cryptonight_original_7_hash<cryptonight_monero, false, true>,
+			cryptonight_original_7_hash<cryptonight_monero, true, true>,
+			cryptonight_original_8_hash<cryptonight_monero, false, false>,
+			cryptonight_original_8_hash<cryptonight_monero, true, false>,
+			cryptonight_original_8_hash<cryptonight_monero, false, true>,
+			cryptonight_original_8_hash<cryptonight_monero, true, true>,
+			cryptonight_original_9_hash<cryptonight_monero, false, false>,
+			cryptonight_original_9_hash<cryptonight_monero, true, false>,
+			cryptonight_original_9_hash<cryptonight_monero, false, true>,
+			cryptonight_original_9_hash<cryptonight_monero, true, true>,
+			cryptonight_original_10_hash<cryptonight_monero, false, false>,
+			cryptonight_original_10_hash<cryptonight_monero, true, false>,
+			cryptonight_original_10_hash<cryptonight_monero, false, true>,
+			cryptonight_original_10_hash<cryptonight_monero, true, true>,
+			cryptonight_original_11_hash<cryptonight_monero, false, false>,
+			cryptonight_original_11_hash<cryptonight_monero, true, false>,
+			cryptonight_original_11_hash<cryptonight_monero, false, true>,
+			cryptonight_original_11_hash<cryptonight_monero, true, true>,
+			cryptonight_original_12_hash<cryptonight_monero, false, false>,
+			cryptonight_original_12_hash<cryptonight_monero, true, false>,
+			cryptonight_original_12_hash<cryptonight_monero, false, true>,
+			cryptonight_original_12_hash<cryptonight_monero, true, true>,
+			cryptonight_original_13_hash<cryptonight_monero, false, false>,
+			cryptonight_original_13_hash<cryptonight_monero, true, false>,
+			cryptonight_original_13_hash<cryptonight_monero, false, true>,
+			cryptonight_original_13_hash<cryptonight_monero, true, true>,
+			cryptonight_original_14_hash<cryptonight_monero, false, false>,
+			cryptonight_original_14_hash<cryptonight_monero, true, false>,
+			cryptonight_original_14_hash<cryptonight_monero, false, true>,
+			cryptonight_original_14_hash<cryptonight_monero, true, true>,
+			cryptonight_original_15_hash<cryptonight_monero, false, false>,
+			cryptonight_original_15_hash<cryptonight_monero, true, false>,
+			cryptonight_original_15_hash<cryptonight_monero, false, true>,
+			cryptonight_original_15_hash<cryptonight_monero, true, true>,
+			cryptonight_update_3_hash<cryptonight_monero, false, false>,
+			cryptonight_update_3_hash<cryptonight_monero, true, false>,
+			cryptonight_update_3_hash<cryptonight_monero, false, true>,
+			cryptonight_update_3_hash<cryptonight_monero, true, true>,
+			cryptonight_update_4_hash<cryptonight_monero, false, false>,
+			cryptonight_update_4_hash<cryptonight_monero, true, false>,
+			cryptonight_update_4_hash<cryptonight_monero, false, true>,
+			cryptonight_update_4_hash<cryptonight_monero, true, true>,
+			cryptonight_update_5_hash<cryptonight_monero, false, false>,
+			cryptonight_update_5_hash<cryptonight_monero, true, false>,
+			cryptonight_update_5_hash<cryptonight_monero, false, true>,
+			cryptonight_update_5_hash<cryptonight_monero, true, true>,
+			cryptonight_update_6_hash<cryptonight_monero, false, false>,
+			cryptonight_update_6_hash<cryptonight_monero, true, false>,
+			cryptonight_update_6_hash<cryptonight_monero, false, true>,
+			cryptonight_update_6_hash<cryptonight_monero, true, true>,
+			cryptonight_update_7_hash<cryptonight_monero, false, false>,
+			cryptonight_update_7_hash<cryptonight_monero, true, false>,
+			cryptonight_update_7_hash<cryptonight_monero, false, true>,
+			cryptonight_update_7_hash<cryptonight_monero, true, true>,
+			cryptonight_update_8_hash<cryptonight_monero, false, false>,
+			cryptonight_update_8_hash<cryptonight_monero, true, false>,
+			cryptonight_update_8_hash<cryptonight_monero, false, true>,
+			cryptonight_update_8_hash<cryptonight_monero, true, true>,
+			cryptonight_update_9_hash<cryptonight_monero, false, false>,
+			cryptonight_update_9_hash<cryptonight_monero, true, false>,
+			cryptonight_update_9_hash<cryptonight_monero, false, true>,
+			cryptonight_update_9_hash<cryptonight_monero, true, true>,
+			cryptonight_update_10_hash<cryptonight_monero, false, false>,
+			cryptonight_update_10_hash<cryptonight_monero, true, false>,
+			cryptonight_update_10_hash<cryptonight_monero, false, true>,
+			cryptonight_update_10_hash<cryptonight_monero, true, true>,
+			cryptonight_update_11_hash<cryptonight_monero, false, false>,
+			cryptonight_update_11_hash<cryptonight_monero, true, false>,
+			cryptonight_update_11_hash<cryptonight_monero, false, true>,
+			cryptonight_update_11_hash<cryptonight_monero, true, true>,
+			cryptonight_update_12_hash<cryptonight_monero, false, false>,
+			cryptonight_update_12_hash<cryptonight_monero, true, false>,
+			cryptonight_update_12_hash<cryptonight_monero, false, true>,
+			cryptonight_update_12_hash<cryptonight_monero, true, true>,
+			cryptonight_update_13_hash<cryptonight_monero, false, false>,
+			cryptonight_update_13_hash<cryptonight_monero, true, false>,
+			cryptonight_update_13_hash<cryptonight_monero, false, true>,
+			cryptonight_update_13_hash<cryptonight_monero, true, true>,
+			cryptonight_update_14_hash<cryptonight_monero, false, false>,
+			cryptonight_update_14_hash<cryptonight_monero, true, false>,
+			cryptonight_update_14_hash<cryptonight_monero, false, true>,
+			cryptonight_update_14_hash<cryptonight_monero, true, true>,
+			cryptonight_update_15_hash<cryptonight_monero, false, false>,
+			cryptonight_update_15_hash<cryptonight_monero, true, false>,
+			cryptonight_update_15_hash<cryptonight_monero, false, true>,
+			cryptonight_update_15_hash<cryptonight_monero, true, true>,
+			cryptonight_double_hash<cryptonight_lite, false, false>,
+			cryptonight_double_hash<cryptonight_lite, true, false>,
+			cryptonight_double_hash<cryptonight_lite, false, true>,
+			cryptonight_double_hash<cryptonight_lite, true, true>,
+			cryptonight_original_3_hash<cryptonight_lite, false, false>,
+			cryptonight_original_3_hash<cryptonight_lite, true, false>,
+			cryptonight_original_3_hash<cryptonight_lite, false, true>,
+			cryptonight_original_3_hash<cryptonight_lite, true, true>,
+			cryptonight_original_4_hash<cryptonight_lite, false, false>,
+			cryptonight_original_4_hash<cryptonight_lite, true, false>,
+			cryptonight_original_4_hash<cryptonight_lite, false, true>,
+			cryptonight_original_4_hash<cryptonight_lite, true, true>,
+			cryptonight_original_5_hash<cryptonight_lite, false, false>,
+			cryptonight_original_5_hash<cryptonight_lite, true, false>,
+			cryptonight_original_5_hash<cryptonight_lite, false, true>,
+			cryptonight_original_5_hash<cryptonight_lite, true, true>,
+			cryptonight_original_6_hash<cryptonight_lite, false, false>,
+			cryptonight_original_6_hash<cryptonight_lite, true, false>,
+			cryptonight_original_6_hash<cryptonight_lite, false, true>,
+			cryptonight_original_6_hash<cryptonight_lite, true, true>,
+			cryptonight_original_7_hash<cryptonight_lite, false, false>,
+			cryptonight_original_7_hash<cryptonight_lite, true, false>,
+			cryptonight_original_7_hash<cryptonight_lite, false, true>,
+			cryptonight_original_7_hash<cryptonight_lite, true, true>,
+			cryptonight_original_8_hash<cryptonight_lite, false, false>,
+			cryptonight_original_8_hash<cryptonight_lite, true, false>,
+			cryptonight_original_8_hash<cryptonight_lite, false, true>,
+			cryptonight_original_8_hash<cryptonight_lite, true, true>,
+			cryptonight_original_9_hash<cryptonight_lite, false, false>,
+			cryptonight_original_9_hash<cryptonight_lite, true, false>,
+			cryptonight_original_9_hash<cryptonight_lite, false, true>,
+			cryptonight_original_9_hash<cryptonight_lite, true, true>,
+			cryptonight_original_10_hash<cryptonight_lite, false, false>,
+			cryptonight_original_10_hash<cryptonight_lite, true, false>,
+			cryptonight_original_10_hash<cryptonight_lite, false, true>,
+			cryptonight_original_10_hash<cryptonight_lite, true, true>,
+			cryptonight_original_11_hash<cryptonight_lite, false, false>,
+			cryptonight_original_11_hash<cryptonight_lite, true, false>,
+			cryptonight_original_11_hash<cryptonight_lite, false, true>,
+			cryptonight_original_11_hash<cryptonight_lite, true, true>,
+			cryptonight_original_12_hash<cryptonight_lite, false, false>,
+			cryptonight_original_12_hash<cryptonight_lite, true, false>,
+			cryptonight_original_12_hash<cryptonight_lite, false, true>,
+			cryptonight_original_12_hash<cryptonight_lite, true, true>,
+			cryptonight_original_13_hash<cryptonight_lite, false, false>,
+			cryptonight_original_13_hash<cryptonight_lite, true, false>,
+			cryptonight_original_13_hash<cryptonight_lite, false, true>,
+			cryptonight_original_13_hash<cryptonight_lite, true, true>,
+			cryptonight_original_14_hash<cryptonight_lite, false, false>,
+			cryptonight_original_14_hash<cryptonight_lite, true, false>,
+			cryptonight_original_14_hash<cryptonight_lite, false, true>,
+			cryptonight_original_14_hash<cryptonight_lite, true, true>,
+			cryptonight_original_15_hash<cryptonight_lite, false, false>,
+			cryptonight_original_15_hash<cryptonight_lite, true, false>,
+			cryptonight_original_15_hash<cryptonight_lite, false, true>,
+			cryptonight_original_15_hash<cryptonight_lite, true, true>,
+			cryptonight_update_3_hash<cryptonight_lite, false, false>,
+			cryptonight_update_3_hash<cryptonight_lite, true, false>,
+			cryptonight_update_3_hash<cryptonight_lite, false, true>,
+			cryptonight_update_3_hash<cryptonight_lite, true, true>,
+			cryptonight_update_4_hash<cryptonight_lite, false, false>,
+			cryptonight_update_4_hash<cryptonight_lite, true, false>,
+			cryptonight_update_4_hash<cryptonight_lite, false, true>,
+			cryptonight_update_4_hash<cryptonight_lite, true, true>,
+			cryptonight_update_5_hash<cryptonight_lite, false, false>,
+			cryptonight_update_5_hash<cryptonight_lite, true, false>,
+			cryptonight_update_5_hash<cryptonight_lite, false, true>,
+			cryptonight_update_5_hash<cryptonight_lite, true, true>,
+			cryptonight_update_6_hash<cryptonight_lite, false, false>,
+			cryptonight_update_6_hash<cryptonight_lite, true, false>,
+			cryptonight_update_6_hash<cryptonight_lite, false, true>,
+			cryptonight_update_6_hash<cryptonight_lite, true, true>,
+			cryptonight_update_7_hash<cryptonight_lite, false, false>,
+			cryptonight_update_7_hash<cryptonight_lite, true, false>,
+			cryptonight_update_7_hash<cryptonight_lite, false, true>,
+			cryptonight_update_7_hash<cryptonight_lite, true, true>,
+			cryptonight_update_8_hash<cryptonight_lite, false, false>,
+			cryptonight_update_8_hash<cryptonight_lite, true, false>,
+			cryptonight_update_8_hash<cryptonight_lite, false, true>,
+			cryptonight_update_8_hash<cryptonight_lite, true, true>,
+			cryptonight_update_9_hash<cryptonight_lite, false, false>,
+			cryptonight_update_9_hash<cryptonight_lite, true, false>,
+			cryptonight_update_9_hash<cryptonight_lite, false, true>,
+			cryptonight_update_9_hash<cryptonight_lite, true, true>,
+			cryptonight_update_10_hash<cryptonight_lite, false, false>,
+			cryptonight_update_10_hash<cryptonight_lite, true, false>,
+			cryptonight_update_10_hash<cryptonight_lite, false, true>,
+			cryptonight_update_10_hash<cryptonight_lite, true, true>,
+			cryptonight_update_11_hash<cryptonight_lite, false, false>,
+			cryptonight_update_11_hash<cryptonight_lite, true, false>,
+			cryptonight_update_11_hash<cryptonight_lite, false, true>,
+			cryptonight_update_11_hash<cryptonight_lite, true, true>,
+			cryptonight_update_12_hash<cryptonight_lite, false, false>,
+			cryptonight_update_12_hash<cryptonight_lite, true, false>,
+			cryptonight_update_12_hash<cryptonight_lite, false, true>,
+			cryptonight_update_12_hash<cryptonight_lite, true, true>,
+			cryptonight_update_13_hash<cryptonight_lite, false, false>,
+			cryptonight_update_13_hash<cryptonight_lite, true, false>,
+			cryptonight_update_13_hash<cryptonight_lite, false, true>,
+			cryptonight_update_13_hash<cryptonight_lite, true, true>,
+			cryptonight_update_14_hash<cryptonight_lite, false, false>,
+			cryptonight_update_14_hash<cryptonight_lite, true, false>,
+			cryptonight_update_14_hash<cryptonight_lite, false, true>,
+			cryptonight_update_14_hash<cryptonight_lite, true, true>,
+			cryptonight_update_15_hash<cryptonight_lite, false, false>,
+			cryptonight_update_15_hash<cryptonight_lite, true, false>,
+			cryptonight_update_15_hash<cryptonight_lite, false, true>,
+			cryptonight_update_15_hash<cryptonight_lite, true, true>,
+			cryptonight_double_hash<cryptonight, false, false>,
+			cryptonight_double_hash<cryptonight, true, false>,
+			cryptonight_double_hash<cryptonight, false, true>,
+			cryptonight_double_hash<cryptonight, true, true>,
+			cryptonight_original_3_hash<cryptonight, false, false>,
+			cryptonight_original_3_hash<cryptonight, true, false>,
+			cryptonight_original_3_hash<cryptonight, false, true>,
+			cryptonight_original_3_hash<cryptonight, true, true>,
+			cryptonight_original_4_hash<cryptonight, false, false>,
+			cryptonight_original_4_hash<cryptonight, true, false>,
+			cryptonight_original_4_hash<cryptonight, false, true>,
+			cryptonight_original_4_hash<cryptonight, true, true>,
+			cryptonight_original_5_hash<cryptonight, false, false>,
+			cryptonight_original_5_hash<cryptonight, true, false>,
+			cryptonight_original_5_hash<cryptonight, false, true>,
+			cryptonight_original_5_hash<cryptonight, true, true>,
+			cryptonight_original_6_hash<cryptonight, false, false>,
+			cryptonight_original_6_hash<cryptonight, true, false>,
+			cryptonight_original_6_hash<cryptonight, false, true>,
+			cryptonight_original_6_hash<cryptonight, true, true>,
+			cryptonight_original_7_hash<cryptonight, false, false>,
+			cryptonight_original_7_hash<cryptonight, true, false>,
+			cryptonight_original_7_hash<cryptonight, false, true>,
+			cryptonight_original_7_hash<cryptonight, true, true>,
+			cryptonight_original_8_hash<cryptonight, false, false>,
+			cryptonight_original_8_hash<cryptonight, true, false>,
+			cryptonight_original_8_hash<cryptonight, false, true>,
+			cryptonight_original_8_hash<cryptonight, true, true>,
+			cryptonight_original_9_hash<cryptonight, false, false>,
+			cryptonight_original_9_hash<cryptonight, true, false>,
+			cryptonight_original_9_hash<cryptonight, false, true>,
+			cryptonight_original_9_hash<cryptonight, true, true>,
+			cryptonight_original_10_hash<cryptonight, false, false>,
+			cryptonight_original_10_hash<cryptonight, true, false>,
+			cryptonight_original_10_hash<cryptonight, false, true>,
+			cryptonight_original_10_hash<cryptonight, true, true>,
+			cryptonight_original_11_hash<cryptonight, false, false>,
+			cryptonight_original_11_hash<cryptonight, true, false>,
+			cryptonight_original_11_hash<cryptonight, false, true>,
+			cryptonight_original_11_hash<cryptonight, true, true>,
+			cryptonight_original_12_hash<cryptonight, false, false>,
+			cryptonight_original_12_hash<cryptonight, true, false>,
+			cryptonight_original_12_hash<cryptonight, false, true>,
+			cryptonight_original_12_hash<cryptonight, true, true>,
+			cryptonight_original_13_hash<cryptonight, false, false>,
+			cryptonight_original_13_hash<cryptonight, true, false>,
+			cryptonight_original_13_hash<cryptonight, false, true>,
+			cryptonight_original_13_hash<cryptonight, true, true>,
+			cryptonight_original_14_hash<cryptonight, false, false>,
+			cryptonight_original_14_hash<cryptonight, true, false>,
+			cryptonight_original_14_hash<cryptonight, false, true>,
+			cryptonight_original_14_hash<cryptonight, true, true>,
+			cryptonight_original_15_hash<cryptonight, false, false>,
+			cryptonight_original_15_hash<cryptonight, true, false>,
+			cryptonight_original_15_hash<cryptonight, false, true>,
+			cryptonight_original_15_hash<cryptonight, true, true>,
+			cryptonight_update_3_hash<cryptonight, false, false>,
+			cryptonight_update_3_hash<cryptonight, true, false>,
+			cryptonight_update_3_hash<cryptonight, false, true>,
+			cryptonight_update_3_hash<cryptonight, true, true>,
+			cryptonight_update_4_hash<cryptonight, false, false>,
+			cryptonight_update_4_hash<cryptonight, true, false>,
+			cryptonight_update_4_hash<cryptonight, false, true>,
+			cryptonight_update_4_hash<cryptonight, true, true>,
+			cryptonight_update_5_hash<cryptonight, false, false>,
+			cryptonight_update_5_hash<cryptonight, true, false>,
+			cryptonight_update_5_hash<cryptonight, false, true>,
+			cryptonight_update_5_hash<cryptonight, true, true>,
+			cryptonight_update_6_hash<cryptonight, false, false>,
+			cryptonight_update_6_hash<cryptonight, true, false>,
+			cryptonight_update_6_hash<cryptonight, false, true>,
+			cryptonight_update_6_hash<cryptonight, true, true>,
+			cryptonight_update_7_hash<cryptonight, false, false>,
+			cryptonight_update_7_hash<cryptonight, true, false>,
+			cryptonight_update_7_hash<cryptonight, false, true>,
+			cryptonight_update_7_hash<cryptonight, true, true>,
+			cryptonight_update_8_hash<cryptonight, false, false>,
+			cryptonight_update_8_hash<cryptonight, true, false>,
+			cryptonight_update_8_hash<cryptonight, false, true>,
+			cryptonight_update_8_hash<cryptonight, true, true>,
+			cryptonight_update_9_hash<cryptonight, false, false>,
+			cryptonight_update_9_hash<cryptonight, true, false>,
+			cryptonight_update_9_hash<cryptonight, false, true>,
+			cryptonight_update_9_hash<cryptonight, true, true>,
+			cryptonight_update_10_hash<cryptonight, false, false>,
+			cryptonight_update_10_hash<cryptonight, true, false>,
+			cryptonight_update_10_hash<cryptonight, false, true>,
+			cryptonight_update_10_hash<cryptonight, true, true>,
+			cryptonight_update_11_hash<cryptonight, false, false>,
+			cryptonight_update_11_hash<cryptonight, true, false>,
+			cryptonight_update_11_hash<cryptonight, false, true>,
+			cryptonight_update_11_hash<cryptonight, true, true>,
+			cryptonight_update_12_hash<cryptonight, false, false>,
+			cryptonight_update_12_hash<cryptonight, true, false>,
+			cryptonight_update_12_hash<cryptonight, false, true>,
+			cryptonight_update_12_hash<cryptonight, true, true>,
+			cryptonight_update_13_hash<cryptonight, false, false>,
+			cryptonight_update_13_hash<cryptonight, true, false>,
+			cryptonight_update_13_hash<cryptonight, false, true>,
+			cryptonight_update_13_hash<cryptonight, true, true>,
+			cryptonight_update_14_hash<cryptonight, false, false>,
+			cryptonight_update_14_hash<cryptonight, true, false>,
+			cryptonight_update_14_hash<cryptonight, false, true>,
+			cryptonight_update_14_hash<cryptonight, true, true>,
+			cryptonight_update_15_hash<cryptonight, false, false>,
+			cryptonight_update_15_hash<cryptonight, true, false>,
+			cryptonight_update_15_hash<cryptonight, false, true>,
+			cryptonight_update_15_hash<cryptonight, true, true>,
+			cryptonight_double_hash<cryptonight_heavy, false, false>,
+			cryptonight_double_hash<cryptonight_heavy, true, false>,
+			cryptonight_double_hash<cryptonight_heavy, false, true>,
+			cryptonight_double_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_3_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_3_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_3_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_3_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_4_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_4_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_4_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_4_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_5_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_5_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_5_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_5_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_6_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_6_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_6_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_6_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_7_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_7_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_7_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_7_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_8_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_8_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_8_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_8_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_9_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_9_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_9_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_9_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_10_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_10_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_10_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_10_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_11_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_11_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_11_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_11_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_12_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_12_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_12_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_12_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_13_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_13_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_13_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_13_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_14_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_14_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_14_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_14_hash<cryptonight_heavy, true, true>,
+			cryptonight_original_15_hash<cryptonight_heavy, false, false>,
+			cryptonight_original_15_hash<cryptonight_heavy, true, false>,
+			cryptonight_original_15_hash<cryptonight_heavy, false, true>,
+			cryptonight_original_15_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_3_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_3_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_3_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_3_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_4_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_4_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_4_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_4_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_5_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_5_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_5_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_5_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_6_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_6_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_6_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_6_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_7_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_7_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_7_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_7_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_8_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_8_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_8_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_8_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_9_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_9_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_9_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_9_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_10_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_10_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_10_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_10_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_11_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_11_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_11_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_11_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_12_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_12_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_12_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_12_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_13_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_13_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_13_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_13_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_14_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_14_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_14_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_14_hash<cryptonight_heavy, true, true>,
+			cryptonight_update_15_hash<cryptonight_heavy, false, false>,
+			cryptonight_update_15_hash<cryptonight_heavy, true, false>,
+			cryptonight_update_15_hash<cryptonight_heavy, false, true>,
+			cryptonight_update_15_hash<cryptonight_heavy, true, true>,
+			cryptonight_double_hash<cryptonight_aeon, false, false>,
+			cryptonight_double_hash<cryptonight_aeon, true, false>,
+			cryptonight_double_hash<cryptonight_aeon, false, true>,
+			cryptonight_double_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_3_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_3_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_3_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_3_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_4_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_4_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_4_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_4_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_5_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_5_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_5_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_5_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_6_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_6_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_6_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_6_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_7_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_7_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_7_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_7_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_8_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_8_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_8_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_8_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_9_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_9_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_9_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_9_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_10_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_10_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_10_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_10_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_11_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_11_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_11_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_11_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_12_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_12_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_12_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_12_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_13_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_13_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_13_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_13_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_14_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_14_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_14_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_14_hash<cryptonight_aeon, true, true>,
+			cryptonight_original_15_hash<cryptonight_aeon, false, false>,
+			cryptonight_original_15_hash<cryptonight_aeon, true, false>,
+			cryptonight_original_15_hash<cryptonight_aeon, false, true>,
+			cryptonight_original_15_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_3_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_3_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_3_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_3_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_4_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_4_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_4_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_4_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_5_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_5_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_5_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_5_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_6_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_6_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_6_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_6_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_7_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_7_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_7_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_7_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_8_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_8_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_8_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_8_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_9_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_9_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_9_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_9_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_10_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_10_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_10_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_10_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_11_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_11_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_11_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_11_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_12_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_12_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_12_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_12_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_13_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_13_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_13_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_13_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_14_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_14_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_14_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_14_hash<cryptonight_aeon, true, true>,
+			cryptonight_update_15_hash<cryptonight_aeon, false, false>,
+			cryptonight_update_15_hash<cryptonight_aeon, true, false>,
+			cryptonight_update_15_hash<cryptonight_aeon, false, true>,
+			cryptonight_update_15_hash<cryptonight_aeon, true, true>,
+			cryptonight_double_hash<cryptonight_ipbc, false, false>,
+			cryptonight_double_hash<cryptonight_ipbc, true, false>,
+			cryptonight_double_hash<cryptonight_ipbc, false, true>,
+			cryptonight_double_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_3_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_3_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_3_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_3_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_4_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_4_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_4_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_4_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_5_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_5_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_5_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_5_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_6_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_6_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_6_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_6_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_7_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_7_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_7_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_7_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_8_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_8_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_8_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_8_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_9_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_9_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_9_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_9_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_10_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_10_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_10_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_10_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_11_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_11_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_11_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_11_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_12_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_12_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_12_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_12_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_13_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_13_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_13_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_13_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_14_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_14_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_14_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_14_hash<cryptonight_ipbc, true, true>,
+			cryptonight_original_15_hash<cryptonight_ipbc, false, false>,
+			cryptonight_original_15_hash<cryptonight_ipbc, true, false>,
+			cryptonight_original_15_hash<cryptonight_ipbc, false, true>,
+			cryptonight_original_15_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_3_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_3_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_3_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_3_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_4_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_4_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_4_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_4_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_5_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_5_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_5_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_5_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_6_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_6_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_6_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_6_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_7_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_7_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_7_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_7_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_8_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_8_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_8_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_8_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_9_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_9_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_9_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_9_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_10_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_10_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_10_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_10_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_11_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_11_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_11_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_11_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_12_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_12_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_12_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_12_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_13_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_13_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_13_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_13_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_14_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_14_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_14_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_14_hash<cryptonight_ipbc, true, true>,
+			cryptonight_update_15_hash<cryptonight_ipbc, false, false>,
+			cryptonight_update_15_hash<cryptonight_ipbc, true, false>,
+			cryptonight_update_15_hash<cryptonight_ipbc, false, true>,
+			cryptonight_update_15_hash<cryptonight_ipbc, true, true>,
+			cryptonight_double_hash<cryptonight_stellite, false, false>,
+			cryptonight_double_hash<cryptonight_stellite, true, false>,
+			cryptonight_double_hash<cryptonight_stellite, false, true>,
+			cryptonight_double_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_3_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_3_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_3_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_3_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_4_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_4_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_4_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_4_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_5_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_5_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_5_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_5_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_6_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_6_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_6_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_6_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_7_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_7_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_7_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_7_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_8_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_8_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_8_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_8_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_9_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_9_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_9_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_9_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_10_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_10_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_10_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_10_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_11_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_11_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_11_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_11_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_12_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_12_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_12_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_12_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_13_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_13_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_13_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_13_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_14_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_14_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_14_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_14_hash<cryptonight_stellite, true, true>,
+			cryptonight_original_15_hash<cryptonight_stellite, false, false>,
+			cryptonight_original_15_hash<cryptonight_stellite, true, false>,
+			cryptonight_original_15_hash<cryptonight_stellite, false, true>,
+			cryptonight_original_15_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_3_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_3_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_3_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_3_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_4_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_4_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_4_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_4_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_5_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_5_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_5_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_5_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_6_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_6_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_6_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_6_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_7_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_7_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_7_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_7_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_8_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_8_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_8_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_8_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_9_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_9_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_9_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_9_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_10_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_10_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_10_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_10_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_11_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_11_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_11_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_11_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_12_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_12_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_12_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_12_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_13_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_13_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_13_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_13_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_14_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_14_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_14_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_14_hash<cryptonight_stellite, true, true>,
+			cryptonight_update_15_hash<cryptonight_stellite, false, false>,
+			cryptonight_update_15_hash<cryptonight_stellite, true, false>,
+			cryptonight_update_15_hash<cryptonight_stellite, false, true>,
+			cryptonight_update_15_hash<cryptonight_stellite, true, true>
 	};
 
 	std::bitset<2> digit;
@@ -916,29 +1596,119 @@ void minethd::double_work_main()
 	multiway_work_main<2u>();
 }
 
-void minethd::triple_work_main()
-{
+void minethd::original_3_work_main() {
 	multiway_work_main<3u>();
 }
 
-void minethd::quad_work_main()
-{
+void minethd::original_4_work_main() {
 	multiway_work_main<4u>();
 }
 
-void minethd::penta_work_main()
-{
+void minethd::original_5_work_main() {
 	multiway_work_main<5u>();
 }
 
-void minethd::deca_work_main() {
+void minethd::original_6_work_main() {
+	multiway_work_main<6u>();
+}
+
+void minethd::original_7_work_main() {
+	multiway_work_main<7u>();
+}
+
+void minethd::original_8_work_main() {
+	multiway_work_main<8u>();
+}
+
+void minethd::original_9_work_main() {
+	multiway_work_main<9u>();
+}
+
+void minethd::original_10_work_main() {
 	multiway_work_main<10u>();
+}
+
+void minethd::original_11_work_main() {
+	multiway_work_main<11u>();
+}
+
+void minethd::original_12_work_main() {
+	multiway_work_main<12u>();
+}
+
+void minethd::original_13_work_main() {
+	multiway_work_main<13u>();
+}
+
+void minethd::original_14_work_main() {
+	multiway_work_main<14u>();
+}
+
+void minethd::original_15_work_main() {
+	multiway_work_main<15u>();
+}
+
+void minethd::update_3_work_main() {
+	multiway_work_main<103u>();
+}
+
+void minethd::update_4_work_main() {
+	multiway_work_main<104u>();
+}
+
+void minethd::update_5_work_main() {
+	multiway_work_main<105u>();
+}
+
+void minethd::update_6_work_main() {
+	multiway_work_main<106u>();
+}
+
+void minethd::update_7_work_main() {
+	multiway_work_main<107u>();
+}
+
+void minethd::update_8_work_main() {
+	multiway_work_main<108u>();
+}
+
+void minethd::update_9_work_main() {
+	multiway_work_main<109u>();
+}
+
+void minethd::update_10_work_main() {
+	multiway_work_main<110u>();
+}
+
+void minethd::update_11_work_main() {
+	multiway_work_main<111u>();
+}
+
+void minethd::update_12_work_main() {
+	multiway_work_main<112u>();
+}
+
+void minethd::update_13_work_main() {
+	multiway_work_main<113u>();
+}
+
+void minethd::update_14_work_main() {
+	multiway_work_main<114u>();
+}
+
+void minethd::update_15_work_main() {
+	multiway_work_main<115u>();
 }
 
 template<size_t N>
 void minethd::prep_multiway_work(uint8_t *bWorkBlob, uint32_t **piNonce)
 {
-	for (size_t i = 0; i < N; i++)
+	size_t NN(N);
+	if(NN > 100) {
+		NN -= 100;
+	}
+
+	for (size_t i = 0; i < NN; i++)
 	{
 		memcpy(bWorkBlob + oWork.iWorkSize * i, oWork.bWorkBlob, oWork.iWorkSize);
 		if (i > 0)
@@ -949,6 +1719,11 @@ void minethd::prep_multiway_work(uint8_t *bWorkBlob, uint32_t **piNonce)
 template<uint32_t N>
 void minethd::multiway_work_main()
 {
+	uint32_t NN(N);
+	if(NN > 100) {
+		NN -= 100;
+	}
+
 	if(affinity >= 0) //-1 means no affinity
 		bindMemoryToNUMANode(affinity);
 
@@ -966,7 +1741,7 @@ void minethd::multiway_work_main()
 	uint32_t iNonce;
 	job_result res;
 
-	for (size_t i = 0; i < N; i++)
+	for (size_t i = 0; i < NN; i++)
 	{
 		ctx[i] = minethd_alloc_ctx();
 		piHashVal[i] = (uint64_t*)(bHashOut + 32 * i + 24);
@@ -1031,27 +1806,27 @@ void minethd::multiway_work_main()
 			if ((iCount++ & 0x7) == 0)  //Store stats every 8*N hashes
 			{
 				uint64_t iStamp = get_timestamp_ms();
-				iHashCount.store(iCount * N, std::memory_order_relaxed);
+				iHashCount.store(iCount * NN, std::memory_order_relaxed);
 				iTimestamp.store(iStamp, std::memory_order_relaxed);
 			}
 
-			nonce_ctr -= N;
+			nonce_ctr -= NN;
 			if(nonce_ctr <= 0)
 			{
 				globalStates::inst().calc_start_nonce(iNonce, oWork.bNiceHash, nonce_chunk);
 				nonce_ctr = nonce_chunk;
 			}
 
-			for (size_t i = 0; i < N; i++)
+			for (size_t i = 0; i < NN; i++)
 				*piNonce[i] = iNonce++;
 
 			hash_fun_multi(bWorkBlob, oWork.iWorkSize, bHashOut, ctx);
 
-			for (size_t i = 0; i < N; i++)
+			for (size_t i = 0; i < NN; i++)
 			{
 				if (*piHashVal[i] < oWork.iTarget)
 				{
-					executor::inst()->push_event(ex_event(job_result(oWork.sJobID, iNonce - N + i, bHashOut + 32 * i, iThreadNo), oWork.iPoolId));
+					executor::inst()->push_event(ex_event(job_result(oWork.sJobID, iNonce - NN + i, bHashOut + 32 * i, iThreadNo), oWork.iPoolId));
 				}
 			}
 
@@ -1062,7 +1837,7 @@ void minethd::multiway_work_main()
 		prep_multiway_work<N>(bWorkBlob, piNonce);
 	}
 
-	for (int i = 0; i < N; i++)
+	for (int i = 0; i < NN; i++)
 		cryptonight_free_ctx(ctx[i]);
 }
 

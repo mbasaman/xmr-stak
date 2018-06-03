@@ -804,22 +804,20 @@ void cryptonight_double_hash(const void* input, size_t len, void* output, crypto
 	__m128i mc##n = _mm_set_epi64x(*reinterpret_cast<const uint64_t*>(reinterpret_cast<const uint8_t*>(input) + n * len + 35) ^ \
 	*(reinterpret_cast<const uint64_t*>((ctx)->hash_state) + 24), 0);
 
-// This lovelier creation will do 3 cn hashes at a time.
+
+
 template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
-void cryptonight_triple_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx)
-{
+void cryptonight_original_3_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
 	constexpr size_t MASK = cn_select_mask<ALGO>();
 	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
 	constexpr size_t MEM = cn_select_memory<ALGO>();
 
-	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon || ALGO == cryptonight_ipbc || ALGO == cryptonight_stellite) && len < 43)
-	{
-		memset(output, 0, 32 * 3);
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
 		return;
 	}
 
-	for (size_t i = 0; i < 3; i++)
-	{
+	for (size_t i = 0; i < 3; i++) {
 		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
 		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
 	}
@@ -845,13 +843,107 @@ void cryptonight_triple_hash(const void* input, size_t len, void* output, crypto
 	__m128i cx1 = _mm_set_epi64x(0, 0);
 	__m128i cx2 = _mm_set_epi64x(0, 0);
 
-	uint64_t idx0, idx1, idx2;
-	idx0 = _mm_cvtsi128_si64(ax0);
-	idx1 = _mm_cvtsi128_si64(ax1);
-	idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	}
+
+	for (size_t i = 0; i < 3; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_3_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 3; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
 
 	uint64_t hi, lo;
-	__m128i *ptr0, *ptr1, *ptr2;
 
 	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
 	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
@@ -869,8 +961,7 @@ void cryptonight_triple_hash(const void* input, size_t len, void* output, crypto
 	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
 	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
 
-	for (size_t i = 1; i < ITERATIONS/2; i++)
-	{
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
 		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
 		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
 		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
@@ -892,30 +983,26 @@ void cryptonight_triple_hash(const void* input, size_t len, void* output, crypto
 	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
 	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
 
-	for (size_t i = 0; i < 3; i++)
-	{
+	for (size_t i = 0; i < 3; i++) {
 		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
 		keccakf((uint64_t*)ctx[i]->hash_state, 24);
 		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
 	}
 }
 
-// This even lovelier creation will do 4 cn hashes at a time.
+
 template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
-void cryptonight_quad_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx)
-{
+void cryptonight_original_4_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
 	constexpr size_t MASK = cn_select_mask<ALGO>();
 	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
 	constexpr size_t MEM = cn_select_memory<ALGO>();
 
-	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon || ALGO == cryptonight_ipbc || ALGO == cryptonight_stellite) && len < 43)
-	{
-		memset(output, 0, 32 * 4);
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
 		return;
 	}
 
-	for (size_t i = 0; i < 4; i++)
-	{
+	for (size_t i = 0; i < 4; i++) {
 		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
 		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
 	}
@@ -947,14 +1034,125 @@ void cryptonight_quad_hash(const void* input, size_t len, void* output, cryptoni
 	__m128i cx2 = _mm_set_epi64x(0, 0);
 	__m128i cx3 = _mm_set_epi64x(0, 0);
 
-	uint64_t idx0, idx1, idx2, idx3;
-	idx0 = _mm_cvtsi128_si64(ax0);
-	idx1 = _mm_cvtsi128_si64(ax1);
-	idx2 = _mm_cvtsi128_si64(ax2);
-	idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	}
+
+	for (size_t i = 0; i < 4; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_4_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 4; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
 
 	uint64_t hi, lo;
-	__m128i *ptr0, *ptr1, *ptr2, *ptr3;
 
 	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
 	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
@@ -976,8 +1174,7 @@ void cryptonight_quad_hash(const void* input, size_t len, void* output, cryptoni
 	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
 	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
 
-	for (size_t i = 1; i < ITERATIONS/2; i++)
-	{
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
 		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
 		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
 		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
@@ -1004,30 +1201,26 @@ void cryptonight_quad_hash(const void* input, size_t len, void* output, cryptoni
 	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
 	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
 
-	for (size_t i = 0; i < 4; i++)
-	{
+	for (size_t i = 0; i < 4; i++) {
 		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
 		keccakf((uint64_t*)ctx[i]->hash_state, 24);
 		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
 	}
 }
 
-// This most lovely creation will do 5 cn hashes at a time.
+
 template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
-void cryptonight_penta_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx)
-{
+void cryptonight_original_5_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
 	constexpr size_t MASK = cn_select_mask<ALGO>();
 	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
 	constexpr size_t MEM = cn_select_memory<ALGO>();
 
-	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon || ALGO == cryptonight_ipbc || ALGO == cryptonight_stellite) && len < 43)
-	{
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
 		memset(output, 0, 32 * 5);
 		return;
 	}
 
-	for (size_t i = 0; i < 5; i++)
-	{
+	for (size_t i = 0; i < 5; i++) {
 		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
 		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
 	}
@@ -1065,15 +1258,143 @@ void cryptonight_penta_hash(const void* input, size_t len, void* output, crypton
 	__m128i cx3 = _mm_set_epi64x(0, 0);
 	__m128i cx4 = _mm_set_epi64x(0, 0);
 
-	uint64_t idx0, idx1, idx2, idx3, idx4;
-	idx0 = _mm_cvtsi128_si64(ax0);
-	idx1 = _mm_cvtsi128_si64(ax1);
-	idx2 = _mm_cvtsi128_si64(ax2);
-	idx3 = _mm_cvtsi128_si64(ax3);
-	idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	}
+
+	for (size_t i = 0; i < 5; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_5_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 5; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
 
 	uint64_t hi, lo;
-	__m128i *ptr0, *ptr1, *ptr2, *ptr3, *ptr4;
 
 	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
 	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
@@ -1099,9 +1420,7 @@ void cryptonight_penta_hash(const void* input, size_t len, void* output, crypton
 	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
 	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
 
-	for (size_t i = 1; i < ITERATIONS/2; i++)
-	{
-
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
 		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
 		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
 		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
@@ -1133,29 +1452,1561 @@ void cryptonight_penta_hash(const void* input, size_t len, void* output, crypton
 	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
 	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
 
-	for (size_t i = 0; i < 5; i++)
-	{
+	for (size_t i = 0; i < 5; i++) {
 		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
 		keccakf((uint64_t*)ctx[i]->hash_state, 24);
 		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
 	}
 }
 
+
 template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
-void cryptonight_deca_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx)
-{
+void cryptonight_original_6_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
 	constexpr size_t MASK = cn_select_mask<ALGO>();
 	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
 	constexpr size_t MEM = cn_select_memory<ALGO>();
 
-	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43)
-	{
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
 		memset(output, 0, 32 * 5);
 		return;
 	}
 
-	for (size_t i = 0; i < 10; i++)
-	{
+	for (size_t i = 0; i < 6; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	}
+
+	for (size_t i = 0; i < 6; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_6_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 6; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+
+	for (size_t i = 0; i < 6; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_7_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 7; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	}
+
+	for (size_t i = 0; i < 7; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_7_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 7; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+
+	for (size_t i = 0; i < 7; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_8_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 8; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	}
+
+	for (size_t i = 0; i < 8; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_8_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 8; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint8_t* l7 = ctx[7]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+	CN_STEP1_A(ax7, bx7, cx7, l7, ptr7, idx7);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP3(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+
+	for (size_t i = 0; i < 8; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_9_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 9; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+		__m128i *ptr8;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, bx8, cx8, l8, ptr8, idx8);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, bx8, cx8, l8, ptr8, idx8);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, bx8, cx8, l8, ptr8, idx8);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, cx8, bx8, l8, ptr8, idx8);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, cx8, bx8, l8, ptr8, idx8);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, cx8, bx8, l8, ptr8, idx8);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	}
+
+	for (size_t i = 0; i < 9; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_9_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 9; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint8_t* l8 = ctx[8]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+	__m128i *ptr8;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+	CN_STEP1_A(ax7, bx7, cx7, l7, ptr7, idx7);
+	CN_STEP1_A(ax8, bx8, cx8, l8, ptr8, idx8);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP3(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP3(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+
+	for (size_t i = 0; i < 9; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_10_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 10; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+		__m128i *ptr8;
+		__m128i *ptr9;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, bx9, cx9, l9, ptr9, idx9);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, bx9, cx9, l9, ptr9, idx9);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, bx9, cx9, l9, ptr9, idx9);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, cx9, bx9, l9, ptr9, idx9);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, cx9, bx9, l9, ptr9, idx9);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, cx9, bx9, l9, ptr9, idx9);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	}
+
+	for (size_t i = 0; i < 10; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_10_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 10; i++) {
 		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
 		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
 	}
@@ -1237,7 +3088,16 @@ void cryptonight_deca_hash(const void* input, size_t len, void* output, cryptoni
 	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
 	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
 
-	__m128i *ptr0, *ptr1, *ptr2, *ptr3, *ptr4, *ptr5, *ptr6, *ptr7, *ptr8, *ptr9;
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+	__m128i *ptr8;
+	__m128i *ptr9;
 
 	uint64_t hi, lo;
 
@@ -1285,8 +3145,7 @@ void cryptonight_deca_hash(const void* input, size_t len, void* output, cryptoni
 	CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
 	CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
 
-	for (size_t i = 1; i < ITERATIONS/2; i++)
-	{
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
 		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
 		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
 		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
@@ -1343,8 +3202,2582 @@ void cryptonight_deca_hash(const void* input, size_t len, void* output, cryptoni
 	CN2_STEP3(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
 	CN2_STEP3(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
 
-	for (size_t i = 0; i < 10; i++)
-	{
+	for (size_t i = 0; i < 10; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_11_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 11; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+		__m128i *ptr8;
+		__m128i *ptr9;
+		__m128i *ptr10;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, bx10, cx10, l10, ptr10, idx10);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, bx10, cx10, l10, ptr10, idx10);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, bx10, cx10, l10, ptr10, idx10);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, cx10, bx10, l10, ptr10, idx10);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, cx10, bx10, l10, ptr10, idx10);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, cx10, bx10, l10, ptr10, idx10);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	}
+
+	for (size_t i = 0; i < 11; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_11_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 11; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint8_t* l10 = ctx[10]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+	__m128i *ptr8;
+	__m128i *ptr9;
+	__m128i *ptr10;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+	CN_STEP1_A(ax7, bx7, cx7, l7, ptr7, idx7);
+	CN_STEP1_A(ax8, bx8, cx8, l8, ptr8, idx8);
+	CN_STEP1_A(ax9, bx9, cx9, l9, ptr9, idx9);
+	CN_STEP1_A(ax10, bx10, cx10, l10, ptr10, idx10);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP3(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP3(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP3(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP3(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+
+	for (size_t i = 0; i < 11; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_12_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 12; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint8_t* l11 = ctx[11]->long_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+		__m128i *ptr8;
+		__m128i *ptr9;
+		__m128i *ptr10;
+		__m128i *ptr11;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, bx11, cx11, l11, ptr11, idx11);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, bx11, cx11, l11, ptr11, idx11);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, bx11, cx11, l11, ptr11, idx11);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, cx11, bx11, l11, ptr11, idx11);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, cx11, bx11, l11, ptr11, idx11);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, cx11, bx11, l11, ptr11, idx11);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	}
+
+	for (size_t i = 0; i < 12; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_12_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 12; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint8_t* l11 = ctx[11]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+	__m128i *ptr8;
+	__m128i *ptr9;
+	__m128i *ptr10;
+	__m128i *ptr11;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+	CN_STEP1_A(ax7, bx7, cx7, l7, ptr7, idx7);
+	CN_STEP1_A(ax8, bx8, cx8, l8, ptr8, idx8);
+	CN_STEP1_A(ax9, bx9, cx9, l9, ptr9, idx9);
+	CN_STEP1_A(ax10, bx10, cx10, l10, ptr10, idx10);
+	CN_STEP1_A(ax11, bx11, cx11, l11, ptr11, idx11);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP3(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP3(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP3(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP3(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP3(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+
+	for (size_t i = 0; i < 12; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_13_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 13; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+	CONST_INIT(ctx[12], 12);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint8_t* l11 = ctx[11]->long_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+	uint8_t* l12 = ctx[12]->long_state;
+	uint64_t* h12 = (uint64_t*)ctx[12]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+	__m128i ax12 = _mm_set_epi64x(h12[1] ^ h12[5], h12[0] ^ h12[4]);
+	__m128i bx12 = _mm_set_epi64x(h12[3] ^ h12[7], h12[2] ^ h12[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+	__m128i cx12 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+	uint64_t idx12 = _mm_cvtsi128_si64(ax12);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+		__m128i *ptr8;
+		__m128i *ptr9;
+		__m128i *ptr10;
+		__m128i *ptr11;
+		__m128i *ptr12;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP1(ax12, bx12, cx12, l12, ptr12, idx12);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP2(ax12, bx12, cx12, l12, ptr12, idx12);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP3(ax12, bx12, cx12, l12, ptr12, idx12);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN_STEP4(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP1(ax12, cx12, bx12, l12, ptr12, idx12);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP2(ax12, cx12, bx12, l12, ptr12, idx12);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP3(ax12, cx12, bx12, l12, ptr12, idx12);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN_STEP4(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	}
+
+	for (size_t i = 0; i < 13; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_13_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 13; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+	CONST_INIT(ctx[12], 12);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint8_t* l11 = ctx[11]->long_state;
+	uint8_t* l12 = ctx[12]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+	uint64_t* h12 = (uint64_t*)ctx[12]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+	__m128i ax12 = _mm_set_epi64x(h12[1] ^ h12[5], h12[0] ^ h12[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+	__m128i bx12 = _mm_set_epi64x(h12[3] ^ h12[7], h12[2] ^ h12[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+	__m128i cx12 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+	uint64_t idx12 = _mm_cvtsi128_si64(ax12);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+	__m128i *ptr8;
+	__m128i *ptr9;
+	__m128i *ptr10;
+	__m128i *ptr11;
+	__m128i *ptr12;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+	CN_STEP1_A(ax7, bx7, cx7, l7, ptr7, idx7);
+	CN_STEP1_A(ax8, bx8, cx8, l8, ptr8, idx8);
+	CN_STEP1_A(ax9, bx9, cx9, l9, ptr9, idx9);
+	CN_STEP1_A(ax10, bx10, cx10, l10, ptr10, idx10);
+	CN_STEP1_A(ax11, bx11, cx11, l11, ptr11, idx11);
+	CN_STEP1_A(ax12, bx12, cx12, l12, ptr12, idx12);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+	CN2_STEP2(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP1(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP2(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN2_STEP1(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN2_STEP2(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN2_STEP1(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN2_STEP2(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP3(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP3(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP3(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP3(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP3(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP3(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+
+	for (size_t i = 0; i < 13; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_14_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 14; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+	CONST_INIT(ctx[12], 12);
+	CONST_INIT(ctx[13], 13);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint8_t* l11 = ctx[11]->long_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+	uint8_t* l12 = ctx[12]->long_state;
+	uint64_t* h12 = (uint64_t*)ctx[12]->hash_state;
+	uint8_t* l13 = ctx[13]->long_state;
+	uint64_t* h13 = (uint64_t*)ctx[13]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+	__m128i ax12 = _mm_set_epi64x(h12[1] ^ h12[5], h12[0] ^ h12[4]);
+	__m128i bx12 = _mm_set_epi64x(h12[3] ^ h12[7], h12[2] ^ h12[6]);
+	__m128i ax13 = _mm_set_epi64x(h13[1] ^ h13[5], h13[0] ^ h13[4]);
+	__m128i bx13 = _mm_set_epi64x(h13[3] ^ h13[7], h13[2] ^ h13[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+	__m128i cx12 = _mm_set_epi64x(0, 0);
+	__m128i cx13 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+	uint64_t idx12 = _mm_cvtsi128_si64(ax12);
+	uint64_t idx13 = _mm_cvtsi128_si64(ax13);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+		__m128i *ptr8;
+		__m128i *ptr9;
+		__m128i *ptr10;
+		__m128i *ptr11;
+		__m128i *ptr12;
+		__m128i *ptr13;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP1(ax12, bx12, cx12, l12, ptr12, idx12);
+		CN_STEP1(ax13, bx13, cx13, l13, ptr13, idx13);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP2(ax12, bx12, cx12, l12, ptr12, idx12);
+		CN_STEP2(ax13, bx13, cx13, l13, ptr13, idx13);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP3(ax12, bx12, cx12, l12, ptr12, idx12);
+		CN_STEP3(ax13, bx13, cx13, l13, ptr13, idx13);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN_STEP4(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+		CN_STEP4(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP1(ax12, cx12, bx12, l12, ptr12, idx12);
+		CN_STEP1(ax13, cx13, bx13, l13, ptr13, idx13);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP2(ax12, cx12, bx12, l12, ptr12, idx12);
+		CN_STEP2(ax13, cx13, bx13, l13, ptr13, idx13);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP3(ax12, cx12, bx12, l12, ptr12, idx12);
+		CN_STEP3(ax13, cx13, bx13, l13, ptr13, idx13);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN_STEP4(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+		CN_STEP4(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+	}
+
+	for (size_t i = 0; i < 14; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_14_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 14; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+	CONST_INIT(ctx[12], 12);
+	CONST_INIT(ctx[13], 13);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint8_t* l11 = ctx[11]->long_state;
+	uint8_t* l12 = ctx[12]->long_state;
+	uint8_t* l13 = ctx[13]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+	uint64_t* h12 = (uint64_t*)ctx[12]->hash_state;
+	uint64_t* h13 = (uint64_t*)ctx[13]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+	__m128i ax12 = _mm_set_epi64x(h12[1] ^ h12[5], h12[0] ^ h12[4]);
+	__m128i ax13 = _mm_set_epi64x(h13[1] ^ h13[5], h13[0] ^ h13[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+	__m128i bx12 = _mm_set_epi64x(h12[3] ^ h12[7], h12[2] ^ h12[6]);
+	__m128i bx13 = _mm_set_epi64x(h13[3] ^ h13[7], h13[2] ^ h13[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+	__m128i cx12 = _mm_set_epi64x(0, 0);
+	__m128i cx13 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+	uint64_t idx12 = _mm_cvtsi128_si64(ax12);
+	uint64_t idx13 = _mm_cvtsi128_si64(ax13);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+	__m128i *ptr8;
+	__m128i *ptr9;
+	__m128i *ptr10;
+	__m128i *ptr11;
+	__m128i *ptr12;
+	__m128i *ptr13;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+	CN_STEP1_A(ax7, bx7, cx7, l7, ptr7, idx7);
+	CN_STEP1_A(ax8, bx8, cx8, l8, ptr8, idx8);
+	CN_STEP1_A(ax9, bx9, cx9, l9, ptr9, idx9);
+	CN_STEP1_A(ax10, bx10, cx10, l10, ptr10, idx10);
+	CN_STEP1_A(ax11, bx11, cx11, l11, ptr11, idx11);
+	CN_STEP1_A(ax12, bx12, cx12, l12, ptr12, idx12);
+	CN_STEP1_A(ax13, bx13, cx13, l13, ptr13, idx13);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+	CN2_STEP2(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+	CN2_STEP2(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP1(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	CN2_STEP1(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP2(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	CN2_STEP2(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN2_STEP1(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+		CN2_STEP1(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN2_STEP2(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+		CN2_STEP2(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN2_STEP1(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+		CN2_STEP1(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN2_STEP2(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+		CN2_STEP2(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP3(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP3(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP3(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP3(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP3(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP3(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	CN2_STEP3(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+
+	for (size_t i = 0; i < 14; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_original_15_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 15; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+	CONST_INIT(ctx[12], 12);
+	CONST_INIT(ctx[13], 13);
+	CONST_INIT(ctx[14], 14);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint8_t* l11 = ctx[11]->long_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+	uint8_t* l12 = ctx[12]->long_state;
+	uint64_t* h12 = (uint64_t*)ctx[12]->hash_state;
+	uint8_t* l13 = ctx[13]->long_state;
+	uint64_t* h13 = (uint64_t*)ctx[13]->hash_state;
+	uint8_t* l14 = ctx[14]->long_state;
+	uint64_t* h14 = (uint64_t*)ctx[14]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+	__m128i ax12 = _mm_set_epi64x(h12[1] ^ h12[5], h12[0] ^ h12[4]);
+	__m128i bx12 = _mm_set_epi64x(h12[3] ^ h12[7], h12[2] ^ h12[6]);
+	__m128i ax13 = _mm_set_epi64x(h13[1] ^ h13[5], h13[0] ^ h13[4]);
+	__m128i bx13 = _mm_set_epi64x(h13[3] ^ h13[7], h13[2] ^ h13[6]);
+	__m128i ax14 = _mm_set_epi64x(h14[1] ^ h14[5], h14[0] ^ h14[4]);
+	__m128i bx14 = _mm_set_epi64x(h14[3] ^ h14[7], h14[2] ^ h14[6]);
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+	__m128i cx12 = _mm_set_epi64x(0, 0);
+	__m128i cx13 = _mm_set_epi64x(0, 0);
+	__m128i cx14 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+	uint64_t idx12 = _mm_cvtsi128_si64(ax12);
+	uint64_t idx13 = _mm_cvtsi128_si64(ax13);
+	uint64_t idx14 = _mm_cvtsi128_si64(ax14);
+
+	for (size_t i = 0; i < ITERATIONS/2; i++) {
+		uint64_t hi, lo;
+
+		__m128i *ptr0;
+		__m128i *ptr1;
+		__m128i *ptr2;
+		__m128i *ptr3;
+		__m128i *ptr4;
+		__m128i *ptr5;
+		__m128i *ptr6;
+		__m128i *ptr7;
+		__m128i *ptr8;
+		__m128i *ptr9;
+		__m128i *ptr10;
+		__m128i *ptr11;
+		__m128i *ptr12;
+		__m128i *ptr13;
+		__m128i *ptr14;
+
+		CN_STEP1(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP1(ax12, bx12, cx12, l12, ptr12, idx12);
+		CN_STEP1(ax13, bx13, cx13, l13, ptr13, idx13);
+		CN_STEP1(ax14, bx14, cx14, l14, ptr14, idx14);
+
+		CN_STEP2(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP2(ax12, bx12, cx12, l12, ptr12, idx12);
+		CN_STEP2(ax13, bx13, cx13, l13, ptr13, idx13);
+		CN_STEP2(ax14, bx14, cx14, l14, ptr14, idx14);
+
+		CN_STEP3(ax0, bx0, cx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, bx1, cx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, bx2, cx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, bx3, cx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, bx4, cx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, bx5, cx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, bx6, cx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, bx7, cx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, bx8, cx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, bx9, cx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, bx10, cx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, bx11, cx11, l11, ptr11, idx11);
+		CN_STEP3(ax12, bx12, cx12, l12, ptr12, idx12);
+		CN_STEP3(ax13, bx13, cx13, l13, ptr13, idx13);
+		CN_STEP3(ax14, bx14, cx14, l14, ptr14, idx14);
+
+		CN_STEP4(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN_STEP4(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+		CN_STEP4(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+		CN_STEP4(ax14, bx14, cx14, l14, mc14, ptr14, idx14);
+
+		CN_STEP1(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP1(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP1(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP1(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP1(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP1(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP1(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP1(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP1(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP1(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP1(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP1(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP1(ax12, cx12, bx12, l12, ptr12, idx12);
+		CN_STEP1(ax13, cx13, bx13, l13, ptr13, idx13);
+		CN_STEP1(ax14, cx14, bx14, l14, ptr14, idx14);
+
+		CN_STEP2(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP2(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP2(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP2(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP2(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP2(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP2(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP2(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP2(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP2(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP2(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP2(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP2(ax12, cx12, bx12, l12, ptr12, idx12);
+		CN_STEP2(ax13, cx13, bx13, l13, ptr13, idx13);
+		CN_STEP2(ax14, cx14, bx14, l14, ptr14, idx14);
+
+		CN_STEP3(ax0, cx0, bx0, l0, ptr0, idx0);
+		CN_STEP3(ax1, cx1, bx1, l1, ptr1, idx1);
+		CN_STEP3(ax2, cx2, bx2, l2, ptr2, idx2);
+		CN_STEP3(ax3, cx3, bx3, l3, ptr3, idx3);
+		CN_STEP3(ax4, cx4, bx4, l4, ptr4, idx4);
+		CN_STEP3(ax5, cx5, bx5, l5, ptr5, idx5);
+		CN_STEP3(ax6, cx6, bx6, l6, ptr6, idx6);
+		CN_STEP3(ax7, cx7, bx7, l7, ptr7, idx7);
+		CN_STEP3(ax8, cx8, bx8, l8, ptr8, idx8);
+		CN_STEP3(ax9, cx9, bx9, l9, ptr9, idx9);
+		CN_STEP3(ax10, cx10, bx10, l10, ptr10, idx10);
+		CN_STEP3(ax11, cx11, bx11, l11, ptr11, idx11);
+		CN_STEP3(ax12, cx12, bx12, l12, ptr12, idx12);
+		CN_STEP3(ax13, cx13, bx13, l13, ptr13, idx13);
+		CN_STEP3(ax14, cx14, bx14, l14, ptr14, idx14);
+
+		CN_STEP4(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN_STEP4(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN_STEP4(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN_STEP4(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN_STEP4(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN_STEP4(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN_STEP4(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN_STEP4(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN_STEP4(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN_STEP4(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN_STEP4(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN_STEP4(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN_STEP4(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+		CN_STEP4(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+		CN_STEP4(ax14, cx14, bx14, l14, mc14, ptr14, idx14);
+	}
+
+	for (size_t i = 0; i < 15; i++) {
+		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
+		keccakf((uint64_t*)ctx[i]->hash_state, 24);
+		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);
+	}
+}
+
+
+template<xmrstak_algo ALGO, bool SOFT_AES, bool PREFETCH>
+void cryptonight_update_15_hash(const void* input, size_t len, void* output, cryptonight_ctx** ctx) {
+	constexpr size_t MASK = cn_select_mask<ALGO>();
+	constexpr size_t ITERATIONS = cn_select_iter<ALGO>();
+	constexpr size_t MEM = cn_select_memory<ALGO>();
+
+	if((ALGO == cryptonight_monero || ALGO == cryptonight_aeon) && len < 43) {
+		memset(output, 0, 32 * 5);
+		return;
+	}
+
+	for (size_t i = 0; i < 15; i++) {
+		keccak((const uint8_t *)input + len * i, len, ctx[i]->hash_state, 200);
+		cn_explode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->hash_state, (__m128i*)ctx[i]->long_state);
+	}
+
+	CONST_INIT(ctx[0], 0);
+	CONST_INIT(ctx[1], 1);
+	CONST_INIT(ctx[2], 2);
+	CONST_INIT(ctx[3], 3);
+	CONST_INIT(ctx[4], 4);
+	CONST_INIT(ctx[5], 5);
+	CONST_INIT(ctx[6], 6);
+	CONST_INIT(ctx[7], 7);
+	CONST_INIT(ctx[8], 8);
+	CONST_INIT(ctx[9], 9);
+	CONST_INIT(ctx[10], 10);
+	CONST_INIT(ctx[11], 11);
+	CONST_INIT(ctx[12], 12);
+	CONST_INIT(ctx[13], 13);
+	CONST_INIT(ctx[14], 14);
+
+	uint8_t* l0 = ctx[0]->long_state;
+	uint8_t* l1 = ctx[1]->long_state;
+	uint8_t* l2 = ctx[2]->long_state;
+	uint8_t* l3 = ctx[3]->long_state;
+	uint8_t* l4 = ctx[4]->long_state;
+	uint8_t* l5 = ctx[5]->long_state;
+	uint8_t* l6 = ctx[6]->long_state;
+	uint8_t* l7 = ctx[7]->long_state;
+	uint8_t* l8 = ctx[8]->long_state;
+	uint8_t* l9 = ctx[9]->long_state;
+	uint8_t* l10 = ctx[10]->long_state;
+	uint8_t* l11 = ctx[11]->long_state;
+	uint8_t* l12 = ctx[12]->long_state;
+	uint8_t* l13 = ctx[13]->long_state;
+	uint8_t* l14 = ctx[14]->long_state;
+
+	uint64_t* h0 = (uint64_t*)ctx[0]->hash_state;
+	uint64_t* h1 = (uint64_t*)ctx[1]->hash_state;
+	uint64_t* h2 = (uint64_t*)ctx[2]->hash_state;
+	uint64_t* h3 = (uint64_t*)ctx[3]->hash_state;
+	uint64_t* h4 = (uint64_t*)ctx[4]->hash_state;
+	uint64_t* h5 = (uint64_t*)ctx[5]->hash_state;
+	uint64_t* h6 = (uint64_t*)ctx[6]->hash_state;
+	uint64_t* h7 = (uint64_t*)ctx[7]->hash_state;
+	uint64_t* h8 = (uint64_t*)ctx[8]->hash_state;
+	uint64_t* h9 = (uint64_t*)ctx[9]->hash_state;
+	uint64_t* h10 = (uint64_t*)ctx[10]->hash_state;
+	uint64_t* h11 = (uint64_t*)ctx[11]->hash_state;
+	uint64_t* h12 = (uint64_t*)ctx[12]->hash_state;
+	uint64_t* h13 = (uint64_t*)ctx[13]->hash_state;
+	uint64_t* h14 = (uint64_t*)ctx[14]->hash_state;
+
+	__m128i ax0 = _mm_set_epi64x(h0[1] ^ h0[5], h0[0] ^ h0[4]);
+	__m128i ax1 = _mm_set_epi64x(h1[1] ^ h1[5], h1[0] ^ h1[4]);
+	__m128i ax2 = _mm_set_epi64x(h2[1] ^ h2[5], h2[0] ^ h2[4]);
+	__m128i ax3 = _mm_set_epi64x(h3[1] ^ h3[5], h3[0] ^ h3[4]);
+	__m128i ax4 = _mm_set_epi64x(h4[1] ^ h4[5], h4[0] ^ h4[4]);
+	__m128i ax5 = _mm_set_epi64x(h5[1] ^ h5[5], h5[0] ^ h5[4]);
+	__m128i ax6 = _mm_set_epi64x(h6[1] ^ h6[5], h6[0] ^ h6[4]);
+	__m128i ax7 = _mm_set_epi64x(h7[1] ^ h7[5], h7[0] ^ h7[4]);
+	__m128i ax8 = _mm_set_epi64x(h8[1] ^ h8[5], h8[0] ^ h8[4]);
+	__m128i ax9 = _mm_set_epi64x(h9[1] ^ h9[5], h9[0] ^ h9[4]);
+	__m128i ax10 = _mm_set_epi64x(h10[1] ^ h10[5], h10[0] ^ h10[4]);
+	__m128i ax11 = _mm_set_epi64x(h11[1] ^ h11[5], h11[0] ^ h11[4]);
+	__m128i ax12 = _mm_set_epi64x(h12[1] ^ h12[5], h12[0] ^ h12[4]);
+	__m128i ax13 = _mm_set_epi64x(h13[1] ^ h13[5], h13[0] ^ h13[4]);
+	__m128i ax14 = _mm_set_epi64x(h14[1] ^ h14[5], h14[0] ^ h14[4]);
+
+	__m128i bx0 = _mm_set_epi64x(h0[3] ^ h0[7], h0[2] ^ h0[6]);
+	__m128i bx1 = _mm_set_epi64x(h1[3] ^ h1[7], h1[2] ^ h1[6]);
+	__m128i bx2 = _mm_set_epi64x(h2[3] ^ h2[7], h2[2] ^ h2[6]);
+	__m128i bx3 = _mm_set_epi64x(h3[3] ^ h3[7], h3[2] ^ h3[6]);
+	__m128i bx4 = _mm_set_epi64x(h4[3] ^ h4[7], h4[2] ^ h4[6]);
+	__m128i bx5 = _mm_set_epi64x(h5[3] ^ h5[7], h5[2] ^ h5[6]);
+	__m128i bx6 = _mm_set_epi64x(h6[3] ^ h6[7], h6[2] ^ h6[6]);
+	__m128i bx7 = _mm_set_epi64x(h7[3] ^ h7[7], h7[2] ^ h7[6]);
+	__m128i bx8 = _mm_set_epi64x(h8[3] ^ h8[7], h8[2] ^ h8[6]);
+	__m128i bx9 = _mm_set_epi64x(h9[3] ^ h9[7], h9[2] ^ h9[6]);
+	__m128i bx10 = _mm_set_epi64x(h10[3] ^ h10[7], h10[2] ^ h10[6]);
+	__m128i bx11 = _mm_set_epi64x(h11[3] ^ h11[7], h11[2] ^ h11[6]);
+	__m128i bx12 = _mm_set_epi64x(h12[3] ^ h12[7], h12[2] ^ h12[6]);
+	__m128i bx13 = _mm_set_epi64x(h13[3] ^ h13[7], h13[2] ^ h13[6]);
+	__m128i bx14 = _mm_set_epi64x(h14[3] ^ h14[7], h14[2] ^ h14[6]);
+
+	__m128i cx0 = _mm_set_epi64x(0, 0);
+	__m128i cx1 = _mm_set_epi64x(0, 0);
+	__m128i cx2 = _mm_set_epi64x(0, 0);
+	__m128i cx3 = _mm_set_epi64x(0, 0);
+	__m128i cx4 = _mm_set_epi64x(0, 0);
+	__m128i cx5 = _mm_set_epi64x(0, 0);
+	__m128i cx6 = _mm_set_epi64x(0, 0);
+	__m128i cx7 = _mm_set_epi64x(0, 0);
+	__m128i cx8 = _mm_set_epi64x(0, 0);
+	__m128i cx9 = _mm_set_epi64x(0, 0);
+	__m128i cx10 = _mm_set_epi64x(0, 0);
+	__m128i cx11 = _mm_set_epi64x(0, 0);
+	__m128i cx12 = _mm_set_epi64x(0, 0);
+	__m128i cx13 = _mm_set_epi64x(0, 0);
+	__m128i cx14 = _mm_set_epi64x(0, 0);
+
+	uint64_t idx0 = _mm_cvtsi128_si64(ax0);
+	uint64_t idx1 = _mm_cvtsi128_si64(ax1);
+	uint64_t idx2 = _mm_cvtsi128_si64(ax2);
+	uint64_t idx3 = _mm_cvtsi128_si64(ax3);
+	uint64_t idx4 = _mm_cvtsi128_si64(ax4);
+	uint64_t idx5 = _mm_cvtsi128_si64(ax5);
+	uint64_t idx6 = _mm_cvtsi128_si64(ax6);
+	uint64_t idx7 = _mm_cvtsi128_si64(ax7);
+	uint64_t idx8 = _mm_cvtsi128_si64(ax8);
+	uint64_t idx9 = _mm_cvtsi128_si64(ax9);
+	uint64_t idx10 = _mm_cvtsi128_si64(ax10);
+	uint64_t idx11 = _mm_cvtsi128_si64(ax11);
+	uint64_t idx12 = _mm_cvtsi128_si64(ax12);
+	uint64_t idx13 = _mm_cvtsi128_si64(ax13);
+	uint64_t idx14 = _mm_cvtsi128_si64(ax14);
+
+	__m128i *ptr0;
+	__m128i *ptr1;
+	__m128i *ptr2;
+	__m128i *ptr3;
+	__m128i *ptr4;
+	__m128i *ptr5;
+	__m128i *ptr6;
+	__m128i *ptr7;
+	__m128i *ptr8;
+	__m128i *ptr9;
+	__m128i *ptr10;
+	__m128i *ptr11;
+	__m128i *ptr12;
+	__m128i *ptr13;
+	__m128i *ptr14;
+
+	uint64_t hi, lo;
+
+	CN_STEP1_A(ax0, bx0, cx0, l0, ptr0, idx0);
+	CN_STEP1_A(ax1, bx1, cx1, l1, ptr1, idx1);
+	CN_STEP1_A(ax2, bx2, cx2, l2, ptr2, idx2);
+	CN_STEP1_A(ax3, bx3, cx3, l3, ptr3, idx3);
+	CN_STEP1_A(ax4, bx4, cx4, l4, ptr4, idx4);
+	CN_STEP1_A(ax5, bx5, cx5, l5, ptr5, idx5);
+	CN_STEP1_A(ax6, bx6, cx6, l6, ptr6, idx6);
+	CN_STEP1_A(ax7, bx7, cx7, l7, ptr7, idx7);
+	CN_STEP1_A(ax8, bx8, cx8, l8, ptr8, idx8);
+	CN_STEP1_A(ax9, bx9, cx9, l9, ptr9, idx9);
+	CN_STEP1_A(ax10, bx10, cx10, l10, ptr10, idx10);
+	CN_STEP1_A(ax11, bx11, cx11, l11, ptr11, idx11);
+	CN_STEP1_A(ax12, bx12, cx12, l12, ptr12, idx12);
+	CN_STEP1_A(ax13, bx13, cx13, l13, ptr13, idx13);
+	CN_STEP1_A(ax14, bx14, cx14, l14, ptr14, idx14);
+
+	CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+	CN2_STEP2(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+	CN2_STEP2(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+	CN2_STEP2(ax14, bx14, cx14, l14, mc14, ptr14, idx14);
+
+	CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP1(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	CN2_STEP1(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+	CN2_STEP1(ax14, cx14, bx14, l14, mc14, ptr14, idx14);
+
+	CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP2(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	CN2_STEP2(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+	CN2_STEP2(ax14, cx14, bx14, l14, mc14, ptr14, idx14);
+
+	for (size_t i = 1; i < ITERATIONS/2; i++) {
+		CN2_STEP1(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN2_STEP1(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+		CN2_STEP1(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+		CN2_STEP1(ax14, bx14, cx14, l14, mc14, ptr14, idx14);
+
+		CN2_STEP2(ax0, bx0, cx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, bx1, cx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, bx2, cx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, bx3, cx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, bx4, cx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, bx5, cx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, bx6, cx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, bx7, cx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, bx8, cx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, bx9, cx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, bx10, cx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, bx11, cx11, l11, mc11, ptr11, idx11);
+		CN2_STEP2(ax12, bx12, cx12, l12, mc12, ptr12, idx12);
+		CN2_STEP2(ax13, bx13, cx13, l13, mc13, ptr13, idx13);
+		CN2_STEP2(ax14, bx14, cx14, l14, mc14, ptr14, idx14);
+
+		CN2_STEP1(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP1(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP1(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP1(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP1(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP1(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP1(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP1(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP1(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP1(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP1(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP1(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN2_STEP1(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+		CN2_STEP1(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+		CN2_STEP1(ax14, cx14, bx14, l14, mc14, ptr14, idx14);
+
+		CN2_STEP2(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+		CN2_STEP2(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+		CN2_STEP2(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+		CN2_STEP2(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+		CN2_STEP2(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+		CN2_STEP2(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+		CN2_STEP2(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+		CN2_STEP2(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+		CN2_STEP2(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+		CN2_STEP2(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+		CN2_STEP2(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+		CN2_STEP2(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+		CN2_STEP2(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+		CN2_STEP2(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+		CN2_STEP2(ax14, cx14, bx14, l14, mc14, ptr14, idx14);
+	}
+
+	CN2_STEP3(ax0, cx0, bx0, l0, mc0, ptr0, idx0);
+	CN2_STEP3(ax1, cx1, bx1, l1, mc1, ptr1, idx1);
+	CN2_STEP3(ax2, cx2, bx2, l2, mc2, ptr2, idx2);
+	CN2_STEP3(ax3, cx3, bx3, l3, mc3, ptr3, idx3);
+	CN2_STEP3(ax4, cx4, bx4, l4, mc4, ptr4, idx4);
+	CN2_STEP3(ax5, cx5, bx5, l5, mc5, ptr5, idx5);
+	CN2_STEP3(ax6, cx6, bx6, l6, mc6, ptr6, idx6);
+	CN2_STEP3(ax7, cx7, bx7, l7, mc7, ptr7, idx7);
+	CN2_STEP3(ax8, cx8, bx8, l8, mc8, ptr8, idx8);
+	CN2_STEP3(ax9, cx9, bx9, l9, mc9, ptr9, idx9);
+	CN2_STEP3(ax10, cx10, bx10, l10, mc10, ptr10, idx10);
+	CN2_STEP3(ax11, cx11, bx11, l11, mc11, ptr11, idx11);
+	CN2_STEP3(ax12, cx12, bx12, l12, mc12, ptr12, idx12);
+	CN2_STEP3(ax13, cx13, bx13, l13, mc13, ptr13, idx13);
+	CN2_STEP3(ax14, cx14, bx14, l14, mc14, ptr14, idx14);
+
+	for (size_t i = 0; i < 15; i++) {
 		cn_implode_scratchpad<MEM, SOFT_AES, PREFETCH, ALGO>((__m128i*)ctx[i]->long_state, (__m128i*)ctx[i]->hash_state);
 		keccakf((uint64_t*)ctx[i]->hash_state, 24);
 		extra_hashes[ctx[i]->hash_state[0] & 3](ctx[i]->hash_state, 200, (char*)output + 32 * i);

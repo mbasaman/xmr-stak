@@ -43,10 +43,34 @@ private:
 
 	void work_main();
 	void double_work_main();
-	void triple_work_main();
-	void quad_work_main();
-	void penta_work_main();
-	void deca_work_main();
+
+	void original_3_work_main();
+	void original_4_work_main();
+	void original_5_work_main();
+	void original_6_work_main();
+	void original_7_work_main();
+	void original_8_work_main();
+	void original_9_work_main();
+	void original_10_work_main();
+	void original_11_work_main();
+	void original_12_work_main();
+	void original_13_work_main();
+	void original_14_work_main();
+	void original_15_work_main();
+
+	void update_3_work_main();
+	void update_4_work_main();
+	void update_5_work_main();
+	void update_6_work_main();
+	void update_7_work_main();
+	void update_8_work_main();
+	void update_9_work_main();
+	void update_10_work_main();
+	void update_11_work_main();
+	void update_12_work_main();
+	void update_13_work_main();
+	void update_14_work_main();
+	void update_15_work_main();
 
 	uint64_t iJobNo;
 
